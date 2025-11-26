@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Газ реакциясының анимациясы</title>
+    <!-- Tailwind CSS-ті қосу -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Қосымша стильдер */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #ffffff; /* Ақ фон */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        #animation-container {
+            width: 90vw;
+            max-width: 800px;
+            height: 60vh;
+            border: 2px solid #333;
+            position: relative;
+            overflow: hidden;
+            background-color: #fff;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .molecule {
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            will-change: transform;
+            /* Бастапқыда transition жоқ, тек JavaScript арқылы қозғалады */
+        }
+        
+        /* Реакция кезінде ортаға жылжу үшін transition қосатын класс */
+        .molecule.reacting {
+            transition: transform 1.5s ease-in-out;
+            z-index: 10;
+        }
+
+        /* Атомның негізгі стилі */
+        .atom {
+            border-radius: 50%;
+            border: 2px solid #444;
+            box-shadow: inset -2px -2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* Сутегі атомы (H) */
+        .atom.h {
+            background-color: #3b82f6; /* Көк (blue) */
+            width: 36px; /* Өлшемді үлкейту */
+            height: 36px; /* Өлшемді үлкейту */
+        }
+
+        /* Оттегі атомы (O) */
+        .atom.o {
+            background-color: #fab005; /* Сары (yellow) */
+            width: 46px; /* Өлшемді үлкейту */
+            height: 46px; /* Өлшемді үлкейту */
+        }
+
+        .stick {
+            height: 5px;
+            background-color: #999; /* Ашық сұр таяқша */
+            border: 1px solid #777;
+            z-index: -1;
+            position: relative;
+        }
+
+        /* H₂ Молекуласы (Шар-өзекті) */
+        .h2 {
+            display: flex;
+            align-items: center;
+        }
+        .h2 .stick {
+            width: 15px;
+            margin: 0 -10px; /* Атомдардың астына кіргізу */
+        }
+
+
+        /* O₂ Молекуласы (Шар-өзекті) */
+        .o2 {
+            display: flex;
+            align-items: center;
+        }
+        .o2 .stick {
+            width: 20px;
+            height: 7px; /* Сәл қалыңдау */
+            margin: 0 -12px; /* Атомдардың астына кіргізу */
+        }
+        
+        /* H₂O Молекуласы (Микки Маус) */
+        .h2o {
+            position: relative;
+            width: 110px; /* Контейнер өлшемі (үлкейтілді) */
+            height: 85px; /* Контейнер өлшемі (үлкейтілді) */
+        }
+
+        .h2o .o.large {
+            width: 50px; /* Өлшемді үлкейту */
+            height: 50px; /* Өлшемді үлкейту */
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .h2o .h.small {
+            width: 34px; /* Өлшемді үлкейту */
+            height: 34px; /* Өлшемді үлкейту */
+            position: absolute;
+            top: 0;
+            z-index: 2;
+        }
+        
+        /* "Құлақтарды" орналастыру (жаңа өлшемдерге сай) */
+        .h2o .h.small:nth-of-type(1) {
+            left: 5px;
+        }
+
+        .h2o .h.small:nth-of-type(2) {
+            right: 5px;
+        }
+    </style>
+</head>
+<body class="bg-white text-gray-900">
+
+    <h1 class="text-2xl md:text-3xl font-bold my-4 text-center">Газдардың көлемдік қатынасы (2H₂ + O₂ → 2H₂O)</h1>
+
+    <!-- Анимация контейнері -->
+    <div id="animation-container"></div>
+
+    <!-- Басқару батырмалары -->
+    <div id="controls" class="my-4 flex gap-4">
+        <button id="start-btn" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+            Реакцияны бастау
+        </button>
+        <button id="reset-btn" class="px-6 py-2 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            Қайта бастау
+        </button>
+    </div>
+
+    <!-- Нәтиже мәтіні -->
+    <div id="result-text" class="h-6 mt-2 text-lg font-medium text-center"></div>
+
+    <script>
+        // DOM элементтерін алу
+        const container = document.getElementById('animation-container');
+        const startBtn = document.getElementById('start-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const resultText = document.getElementById('result-text');
+
+        // Жалпы параметрлер
+        let molecules = [];
+        let animationFrameId = null;
+        const speed = 4.5; // Сұраныс бойынша жылдамдық өзгертілді (4.5)
+        let containerRect = container.getBoundingClientRect();
+        let reactionInProgress = false;
+
+        // Молекула класы
+        class Molecule {
+            constructor(type, id, isExcess = false) {
+                this.el = document.createElement('div');
+                this.el.id = id;
+                this.el.className = `molecule ${type}`;
+                this.type = type;
+                this.id = id;
+                this.isExcess = isExcess; // Бұл артық қалған молекула ма?
+                this.isReacting = false; // Бұл қазір реакцияға түсіп жатыр ма?
+
+                // Молекуланың HTML құрылымын жасау
+                if (type === 'h2') {
+                    // Шар-өзекті модель
+                    this.el.innerHTML = '<div class="atom h"></div><div class="stick"></div><div class="atom h"></div>';
+                } else if (type === 'o2') {
+                    // Шар-өзекті модель
+                    this.el.innerHTML = '<div class="atom o"></div><div class="stick"></div><div class="atom o"></div>';
+                } else if (type === 'h2o') {
+                    // H₂O-ның құрылымы (2 кіші H, 1 үлкен O)
+                    this.el.innerHTML = `
+                        <div class="atom h small"></div>
+                        <div class="atom h small"></div>
+                        <div class="atom o large"></div>
+                    `;
+                }
+                
+                container.appendChild(this.el);
+
+                // Өлшемдерін алу
+                const elRect = this.el.getBoundingClientRect();
+                this.width = elRect.width;
+                this.height = elRect.height;
+
+                // Бастапқы кездейсоқ позиция
+                this.x = Math.random() * (containerRect.width - this.width);
+                this.y = Math.random() * (containerRect.height - this.height);
+
+                // Бастапқы кездейсоқ жылдамдық
+                this.vx = (Math.random() - 0.5) * speed;
+                this.vy = (Math.random() - 0.5) * speed;
+                
+                // 0 жылдамдықты болдырмау
+                if (this.vx === 0) this.vx = 1;
+                if (this.vy === 0) this.vy = 1;
+
+                this.updatePosition();
+            }
+
+            // Позицияны жаңарту (қозғалыс)
+            update() {
+                // Егер молекула ортаға қарай жылжып жатса (CSS transition),
+                // JavaScript оның қозғалысын басқармауы керек.
+                if (this.isReacting) return;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Қабырғаларға соғылуды тексеру
+                // Оң/Сол қабырға
+                if (this.x <= 0 || this.x + this.width >= containerRect.width) {
+                    this.vx *= -1;
+                    this.x = Math.max(0, Math.min(this.x, containerRect.width - this.width)); // Қабырғаға жабысып қалуды болдырмау
+                }
+                
+                // Жоғарғы/Төменгі қабырға
+                if (this.y <= 0 || this.y + this.height >= containerRect.height) {
+                    this.vy *= -1;
+                    this.y = Math.max(0, Math.min(this.y, containerRect.height - this.height));
+                }
+
+                this.updatePosition();
+            }
+
+            // Элементтің transform стилін жаңарту
+            updatePosition() {
+                this.el.style.transform = `translate(${this.x}px, ${this.y}px)`;
+            }
+
+            // Молекуланы ортаға жылжыту (реакция үшін)
+            moveToCenter() {
+                this.isReacting = true;
+                this.el.classList.add('reacting'); // CSS transition қосу
+
+                const centerX = (containerRect.width / 2) - (this.width / 2);
+                const centerY = (containerRect.height / 2) - (this.height / 2);
+
+                // Жаңа позицияны transform арқылы орнату
+                this.x = centerX;
+                this.y = centerY;
+                this.updatePosition();
+            }
+        }
+
+        // Анимация циклі
+        function animate() {
+            molecules.forEach(mol => mol.update());
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // Жаңа молекула жасау (артық қалғанын белгілеу)
+        function createMolecule(type, id, isExcess) {
+            const mol = new Molecule(type, id, isExcess);
+            molecules.push(mol);
+        }
+
+        // Сценарий 1: Артық сутегі
+        function setupScenario1() {
+            reactionInProgress = false;
+            container.innerHTML = ''; // Контейнерді тазарту
+            molecules = []; // Массивті тазарту
+            resultText.textContent = ''; // Мәтінді тазарту
+
+            // Батырмалардың күйі
+            startBtn.disabled = false;
+            resetBtn.disabled = true;
+            
+            // Контейнер өлшемін жаңарту
+            containerRect = container.getBoundingClientRect();
+
+            // Бастапқы молекулалар: 5 H₂ және 3 O₂
+            // 2 H₂ + 1 O₂ реакцияға түседі
+            // 3 H₂ + 2 O₂ артық қалады
+
+            // Реакцияға түсетіндер
+            createMolecule('h2', 'h2-1', false);
+            createMolecule('h2', 'h2-2', false);
+            createMolecule('o2', 'o2-1', false);
+            
+            // Артық қалатындар (3 H₂ + 2 O₂)
+            createMolecule('h2', 'h2-3', true);
+            createMolecule('h2', 'h2-4', true);
+            createMolecule('h2', 'h2-5', true); // 3-ші артық H₂
+            createMolecule('o2', 'o2-2', true);
+            createMolecule('o2', 'o2-3', true); // 2-ші артық O₂
+
+            // Анимацияны бастау
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            animate();
+        }
+
+        // Реакцияны бастау функциясы
+        function startReaction() {
+            if (reactionInProgress) return;
+            reactionInProgress = true;
+            
+            startBtn.disabled = true;
+
+            // Реакцияға түсетін молекулаларды табу (артық еместерін)
+            const reactingH2 = molecules.filter(m => m.type === 'h2' && !m.isExcess);
+            const reactingO2 = molecules.filter(m => m.type === 'o2' && !m.isExcess);
+            
+            // Барлығын ортаға жылжыту
+            reactingH2.forEach(m => m.moveToCenter());
+            reactingO2.forEach(m => m.moveToCenter());
+
+            // Артық қалған молекулалар 'isReacting = false' болғандықтан
+            // 'update' функциясында қозғалысын жалғастыра береді.
+
+            // 1.5 секундтан кейін (CSS transition аяқталғанда) реакцияны аяқтау
+            setTimeout(completeReaction, 1500);
+        }
+
+        // Реакцияны аяқтау
+        function completeReaction() {
+            // Реакцияға түскендерді жою
+            const reactingMolecules = molecules.filter(m => m.isReacting);
+            reactingMolecules.forEach(m => m.el.remove());
+
+            // Массивтен тек артық қалғандарды қалдыру
+            molecules = molecules.filter(m => !m.isReacting);
+            
+            // Жаңа H₂O молекулаларын (нәтиже) орталыққа жақын жерде жасау
+            const centerX = (containerRect.width / 2);
+            const centerY = (containerRect.height / 2);
+
+            // H₂O өлшемдерін шамамен алу (оларды бір-біріне соғып қалмау үшін)
+            const h2oWidth = 110; // CSS-ке сәйкес жаңартылды
+            const h2oHeight = 85; // CSS-ке сәйкес жаңартылды
+
+            // 1-ші H₂O
+            const h2o1 = new Molecule('h2o', 'h2o-1', false);
+            h2o1.x = centerX - h2oWidth - 10; // Ортаның сол жағы
+            h2o1.y = centerY - (h2oHeight / 2);
+            h2o1.updatePosition();
+            molecules.push(h2o1);
+
+            // 2-ші H₂O
+            const h2o2 = new Molecule('h2o', 'h2o-2', false);
+            h2o2.x = centerX + 10; // Ортаның оң жағы
+            h2o2.y = centerY - (h2oHeight / 2);
+            h2o2.updatePosition();
+            molecules.push(h2o2);
+
+            // Жаңа H₂O молекулалары 'isReacting = false' болғандықтан,
+            // келесі 'animate' циклінде бірден қозғала бастайды.
+
+            // Нәтиже мәтінін көрсету
+            resultText.textContent = "Нәтиже: 2 H₂O (су) + 3 H₂, 2 O₂ (артық қалды)";
+            
+            // Қайта бастау батырмасын қосу
+            resetBtn.disabled = false;
+        }
+
+        // Терезе өлшемі өзгергенде контейнер өлшемін жаңарту
+        window.addEventListener('resize', () => {
+            containerRect = container.getBoundingClientRect();
+        });
+
+        // Батырмаларды тыңдау
+        startBtn.addEventListener('click', startReaction);
+        resetBtn.addEventListener('click', setupScenario1);
+
+        // Бет жүктелгенде бастапқы сценарийді орнату
+        document.addEventListener('DOMContentLoaded', setupScenario1);
+
+    </script>
+
+</body>
+</html>
